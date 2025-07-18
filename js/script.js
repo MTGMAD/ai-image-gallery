@@ -818,7 +818,7 @@ function getThumbnailPositionStyle(image) {
 
 // Setup thumbnail position picker
 function setupThumbnailPositionPicker() {
-    // Create thumbnail position modal HTML
+    // Create thumbnail position modal HTML with new compact design
     const thumbnailModalHtml = `
         <div id="thumbnailModal" class="modal thumbnail-modal">
             <div class="modal-content">
@@ -826,14 +826,12 @@ function setupThumbnailPositionPicker() {
                 <h3>📐 Edit Thumbnail Position</h3>
                 <p>Click on the image where you want the thumbnail to be centered:</p>
                 
-                <div class="thumbnail-picker-container">
-                    <img id="thumbnailPickerImage" class="thumbnail-picker-image" src="" alt="">
-                    <div id="positionCrosshair" class="position-crosshair" style="display: none;"></div>
-                </div>
-                
-                <div class="thumbnail-preview">
-                    <strong>Preview:</strong><br>
-                    <img id="thumbnailPreview" src="" alt="Preview" style="object-position: center;">
+                <div class="thumbnail-editor-layout">
+                    <div class="thumbnail-picker-container">
+                        <img id="thumbnailPickerImage" class="thumbnail-picker-image" src="" alt="">
+                        <div id="cropRectangle" class="crop-rectangle" style="display: none;"></div>
+                        <div id="dragCenterPoint" class="drag-center-point" style="display: none;"></div>
+                    </div>
                 </div>
                 
                 <div class="thumbnail-modal-buttons">
@@ -852,13 +850,16 @@ function setupThumbnailPositionPicker() {
     const thumbnailModal = document.getElementById('thumbnailModal');
     const closeThumbnailModal = document.getElementById('closeThumbnailModal');
     const thumbnailPickerImage = document.getElementById('thumbnailPickerImage');
-    const positionCrosshair = document.getElementById('positionCrosshair');
-    const thumbnailPreview = document.getElementById('thumbnailPreview');
+    const cropRectangle = document.getElementById('cropRectangle');
+    const dragCenterPoint = document.getElementById('dragCenterPoint');
     const saveThumbnailPosition = document.getElementById('saveThumbnailPosition');
     const resetThumbnailPosition = document.getElementById('resetThumbnailPosition');
     const cancelThumbnailEdit = document.getElementById('cancelThumbnailEdit');
     
     let currentPosition = { x: 50, y: 50 };
+    let imageNaturalDimensions = { width: 0, height: 0 };
+    let isDragging = false;
+    let dragOffset = { x: 0, y: 0 };
     
     // Close modal events
     closeThumbnailModal.addEventListener('click', () => thumbnailModal.style.display = 'none');
@@ -867,30 +868,101 @@ function setupThumbnailPositionPicker() {
         if (e.target === thumbnailModal) thumbnailModal.style.display = 'none';
     });
     
-    // Image click to set position
+    // Update crop rectangle and center point display
+    function updateCropRectangle() {
+        const rect = thumbnailPickerImage.getBoundingClientRect();
+        const containerRect = thumbnailPickerImage.parentElement.getBoundingClientRect();
+        
+        // Calculate relative position within the container
+        const relativeLeft = rect.left - containerRect.left;
+        const relativeTop = rect.top - containerRect.top;
+        
+        // Calculate crop area (300x200 to match thumbnail card size)
+        const cropWidth = Math.min(300, rect.width);
+        const cropHeight = Math.min(200, rect.height);
+        
+        // Calculate center position based on current x,y percentages
+        const centerX = relativeLeft + (rect.width * currentPosition.x / 100);
+        const centerY = relativeTop + (rect.height * currentPosition.y / 100);
+        
+        // Position crop rectangle around center point
+        const cropLeft = Math.max(relativeLeft, Math.min(relativeLeft + rect.width - cropWidth, centerX - cropWidth / 2));
+        const cropTop = Math.max(relativeTop, Math.min(relativeTop + rect.height - cropHeight, centerY - cropHeight / 2));
+        
+        cropRectangle.style.left = `${cropLeft}px`;
+        cropRectangle.style.top = `${cropTop}px`;
+        cropRectangle.style.width = `${cropWidth}px`;
+        cropRectangle.style.height = `${cropHeight}px`;
+        cropRectangle.style.display = 'block';
+        
+        // Position center point
+        dragCenterPoint.style.left = `${centerX}px`;
+        dragCenterPoint.style.top = `${centerY}px`;
+        dragCenterPoint.style.display = 'block';
+    }
+    
+    // Image click to set position (fallback method)
     thumbnailPickerImage.addEventListener('click', (e) => {
+        if (isDragging) return; // Don't handle clicks during drag
+        
         const rect = thumbnailPickerImage.getBoundingClientRect();
         const x = ((e.clientX - rect.left) / rect.width) * 100;
         const y = ((e.clientY - rect.top) / rect.height) * 100;
         
         currentPosition = { x: Math.round(x), y: Math.round(y) };
+        updateCropRectangle();
+        console.log(`Position updated to: ${currentPosition.x}% ${currentPosition.y}%`);
+    });
+    
+    // Dragging functionality for center point
+    dragCenterPoint.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        dragCenterPoint.classList.add('dragging');
         
-        // Update crosshair position
-        positionCrosshair.style.display = 'block';
-        positionCrosshair.style.left = `${x}%`;
-        positionCrosshair.style.top = `${y}%`;
+        const rect = thumbnailPickerImage.getBoundingClientRect();
+        dragOffset.x = e.clientX - (rect.left + (rect.width * currentPosition.x / 100));
+        dragOffset.y = e.clientY - (rect.top + (rect.height * currentPosition.y / 100));
         
-        // Update preview
-        thumbnailPreview.style.objectPosition = `${currentPosition.x}% ${currentPosition.y}%`;
+        e.preventDefault();
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        
+        const rect = thumbnailPickerImage.getBoundingClientRect();
+        const x = ((e.clientX - dragOffset.x - rect.left) / rect.width) * 100;
+        const y = ((e.clientY - dragOffset.y - rect.top) / rect.height) * 100;
+        
+        // Constrain to image boundaries
+        currentPosition.x = Math.max(0, Math.min(100, Math.round(x)));
+        currentPosition.y = Math.max(0, Math.min(100, Math.round(y)));
+        
+        updateCropRectangle();
+        e.preventDefault();
+    });
+    
+    document.addEventListener('mouseup', () => {
+        if (isDragging) {
+            isDragging = false;
+            dragCenterPoint.classList.remove('dragging');
+            console.log(`Final position: ${currentPosition.x}% ${currentPosition.y}%`);
+        }
+    });
+    
+    // Handle image load to get natural dimensions and update crop rectangle
+    thumbnailPickerImage.addEventListener('load', () => {
+        imageNaturalDimensions.width = thumbnailPickerImage.naturalWidth;
+        imageNaturalDimensions.height = thumbnailPickerImage.naturalHeight;
+        
+        // Update crop rectangle after image loads
+        setTimeout(updateCropRectangle, 100);
     });
     
     // Reset to center
     resetThumbnailPosition.addEventListener('click', () => {
         currentPosition = { x: 50, y: 50 };
-        positionCrosshair.style.left = '50%';
-        positionCrosshair.style.top = '50%';
-        positionCrosshair.style.display = 'block';
-        thumbnailPreview.style.objectPosition = 'center';
+        updateCropRectangle();
+        console.log('Position reset to center: 50% 50%');
     });
     
     // Save position
@@ -917,19 +989,19 @@ function setupThumbnailPositionPicker() {
         if (image) {
             // Set up modal with image
             thumbnailPickerImage.src = image.imageData;
-            thumbnailPreview.src = image.imageData;
             
             // Set current position
             if (image.thumbnailPosition) {
                 currentPosition = { ...image.thumbnailPosition };
-                thumbnailPreview.style.objectPosition = `${currentPosition.x}% ${currentPosition.y}%`;
+                console.log(`Initial position: ${currentPosition.x}% ${currentPosition.y}%`);
             } else {
                 currentPosition = { x: 50, y: 50 };
-                thumbnailPreview.style.objectPosition = 'center';
+                console.log('Initial position: 50% 50% (default)');
             }
             
-            // Hide crosshair initially
-            positionCrosshair.style.display = 'none';
+            // Hide elements initially (will show after image loads)
+            cropRectangle.style.display = 'none';
+            dragCenterPoint.style.display = 'none';
             
             // Show modal
             thumbnailModal.style.display = 'block';
