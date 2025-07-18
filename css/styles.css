@@ -70,6 +70,7 @@ body {
     overflow: hidden;
     cursor: pointer;
     transition: transform 0.2s ease;
+    position: relative;
 }
 
 .image-card:hover {
@@ -81,6 +82,41 @@ body {
     height: 200px;
     object-fit: cover;
     background: #f8f9fa;
+}
+
+/* Thumbnail positioning support */
+.image-card img[data-position] {
+    object-position: var(--thumb-position, center);
+}
+
+/* Edit thumbnail button */
+.thumbnail-edit-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 32px;
+    height: 32px;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    z-index: 10;
+}
+
+.image-card:hover .thumbnail-edit-btn {
+    opacity: 1;
+}
+
+.thumbnail-edit-btn:hover {
+    background: rgba(0, 0, 0, 0.9);
+    transform: scale(1.1);
 }
 
 .image-info {
@@ -135,6 +171,60 @@ body {
     max-width: 800px;
     max-height: 80vh;
     overflow-y: auto;
+}
+
+/* Thumbnail Position Picker Modal */
+.thumbnail-modal .modal-content {
+    max-width: 90vw;
+    max-height: 90vh;
+    padding: 15px;
+}
+
+.thumbnail-picker-container {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+    max-height: 70vh;
+    margin: 10px 0;
+}
+
+.thumbnail-picker-image {
+    max-width: 100%;
+    max-height: 70vh;
+    cursor: crosshair;
+    display: block;
+    border: 2px solid #ddd;
+    border-radius: 5px;
+}
+
+.position-crosshair {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border: 2px solid #3498db;
+    border-radius: 50%;
+    background: rgba(52, 152, 219, 0.3);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    transition: all 0.2s ease;
+}
+
+.thumbnail-preview {
+    margin: 15px 0;
+    text-align: center;
+}
+
+.thumbnail-preview img {
+    width: 150px;
+    height: 100px;
+    object-fit: cover;
+    border: 2px solid #3498db;
+    border-radius: 5px;
+}
+
+.thumbnail-modal-buttons {
+    text-align: center;
+    margin-top: 15px;
 }
 
 .close {
@@ -216,6 +306,14 @@ body {
 .btn-workflow:disabled {
     background: #ccc;
     cursor: not-allowed;
+}
+
+.btn-secondary {
+    background: #6c757d;
+}
+
+.btn-secondary:hover {
+    background: #5a6268;
 }
 
 .no-images {
