@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Image Gallery</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dexie/3.2.4/dexie.min.js"></script>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="header">
+        <h1>🎨 AI Image Gallery</h1>
+        <p>Store and organize your AI-generated images</p>
+    </div>
+
+    <div class="stats">
+        <span id="imageCount">0 images stored</span>
+    </div>
+
+    <div class="database-info">
+        <strong>📁 Database Status:</strong> Your images are stored locally in your browser's IndexedDB database.
+        <button class="export-btn" id="exportData">Export All Data</button>
+        <button class="export-btn" id="importData">Import Data</button>
+        <input type="file" id="importFile" accept=".json" style="display: none;">
+        <br><small>💡 Tip: Export your data regularly to backup your image collection!</small>
+    </div>
+
+    <div class="search-container">
+        <input type="text" id="searchBox" class="search-box" placeholder="Search images by title or prompt...">
+    </div>
+
+    <div class="upload-area" id="uploadArea">
+        <h3>📁 Add New Images</h3>
+        <p>Drag and drop images here or click to browse</p>
+        <input type="file" id="fileInput" accept="image/*" multiple>
+    </div>
+
+    <div class="gallery" id="gallery"></div>
+
+    <div class="no-images" id="noImages" style="display: none;">
+        <p>No images yet. Add some by dragging and dropping them above!</p>
+    </div>
+
+    <!-- Modal for viewing/editing images -->
+    <div id="imageModal" class="modal">
+        <div class="modal-content">
+            <span class="close" id="closeModal">&times;</span>
+            <img id="modalImage" src="" alt="">
+            <div class="metadata-form">
+                <div class="form-group">
+                    <label for="imageTitle">Title:</label>
+                    <input type="text" id="imageTitle" placeholder="Enter image title">
+                </div>
+                <div class="form-group">
+                    <label for="imagePrompt">AI Prompt:</label>
+                    <textarea id="imagePrompt" placeholder="Enter the AI prompt used to generate this image"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="imageModel">AI Model:</label>
+                    <input type="text" id="imageModel" placeholder="e.g., DALL-E 3, Midjourney, Stable Diffusion">
+                </div>
+                <div class="form-group">
+                    <label for="imageTags">Tags:</label>
+                    <input type="text" id="imageTags" placeholder="Enter tags separated by commas">
+                </div>
+                <div class="form-group">
+                    <label for="imageNotes">Notes:</label>
+                    <textarea id="imageNotes" placeholder="Additional notes about this image"></textarea>
+                </div>
+                
+                <!-- Metadata display -->
+                <div class="form-group">
+                    <label>📋 Image Metadata:</label>
+                    <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px; max-height: 300px; overflow-y: auto;">
+                        
+                        <!-- Prompt Section -->
+                        <div id="promptSection" style="display: none;">
+                            <h4 style="color: #2c3e50; margin: 0 0 10px 0; font-size: 14px; font-family: Arial, sans-serif;">
+                                🎯 Prompt Data:
+                            </h4>
+                            <div id="promptDisplay" style="background: #e8f4f8; padding: 8px; border-radius: 4px; margin-bottom: 15px; border-left: 3px solid #3498db;">
+                                <em>No prompt data found</em>
+                            </div>
+                        </div>
+                        
+                        <!-- Workflow Section -->
+                        <div id="workflowSection" style="display: none;">
+                            <h4 style="color: #2c3e50; margin: 0 0 10px 0; font-size: 14px; font-family: Arial, sans-serif;">
+                                🔧 Workflow Data:
+                            </h4>
+                            <div id="workflowDisplay" style="background: #fff3cd; padding: 8px; border-radius: 4px; margin-bottom: 15px; border-left: 3px solid #ffc107;">
+                                <em>No workflow data found</em>
+                            </div>
+                        </div>
+                        
+                        <!-- Other Metadata Section -->
+                        <div id="otherMetadataSection" style="display: none;">
+                            <h4 style="color: #2c3e50; margin: 0 0 10px 0; font-size: 14px; font-family: Arial, sans-serif;">
+                                📄 Other Metadata:
+                            </h4>
+                            <div id="otherMetadataDisplay" style="background: #f8f9fa; padding: 8px; border-radius: 4px; border-left: 3px solid #6c757d;">
+                                <em>No other metadata found</em>
+                            </div>
+                        </div>
+                        
+                        <!-- No metadata message -->
+                        <div id="noMetadataMessage" style="text-align: center; color: #6c757d; font-style: italic;">
+                            No metadata found
+                        </div>
+                        
+                    </div>
+                </div>
+                
+                <button class="btn" id="saveMetadata">Save Changes</button>
+                <button class="btn btn-danger" id="deleteImage">Delete Image</button>
+                <button class="btn btn-workflow" id="downloadWorkflow" style="display: none;">Download ComfyUI Workflow</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CHANGED: Now using type="module" to enable imports -->
+    <script type="module" src="js/script.js"></script>
+</body>
+</html>
