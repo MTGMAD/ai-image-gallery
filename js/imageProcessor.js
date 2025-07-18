@@ -2,9 +2,11 @@
 
 /**
  * Main function to process uploaded files
- * Determines which parser to use based on filename
+ * Determines which parser to use based on filename and uploads to server
  */
 export async function processFile(file, database) {
+    console.log('🔍 processFile called with:', file.name);
+    
     const arrayBuffer = await file.arrayBuffer();
     const uint8Array = new Uint8Array(arrayBuffer);
     
@@ -26,33 +28,115 @@ export async function processFile(file, database) {
         aiInfo = extractComfyUIInfo(pngTextChunks);
     }
     
-    const reader = new FileReader();
-    return new Promise((resolve, reject) => {
-        reader.onload = async (e) => {
-            try {
-                const imageData = e.target.result;
-                
-                const newImage = {
-                    title: aiInfo.title || file.name.replace(/\.[^/.]+$/, ''),
-                    prompt: aiInfo.prompt || '',
-                    model: aiInfo.model || '',
-                    tags: aiInfo.tags || '',
-                    notes: aiInfo.notes || '',
-                    dateAdded: new Date().toISOString(),
-                    imageData: imageData,
-                    metadata: pngTextChunks
-                };
-
-                const imageId = await database.images.add(newImage);
-                resolve({ success: true, imageId, imageData: newImage });
-            } catch (error) {
-                reject(error);
-            }
-        };
+    console.log('🔍 About to try server upload...');
+    
+    try {
+        // STEP 1: Upload file to server (for backup in images/ folder)
+        console.log('Attempting to upload to server:', file.name);
+        const serverUploadResult = await uploadFileToServer(file);
+        console.log('✅ Server upload successful:', serverUploadResult);
         
-        reader.onerror = () => reject(new Error('Failed to read file'));
-        reader.readAsDataURL(file);
+        // STEP 2: Store in IndexedDB (for metadata and local access)
+        const reader = new FileReader();
+        return new Promise((resolve, reject) => {
+            reader.onload = async (e) => {
+                try {
+                    const imageData = e.target.result;
+                    
+                    const newImage = {
+                        title: aiInfo.title || file.name.replace(/\.[^/.]+$/, ''),
+                        prompt: aiInfo.prompt || '',
+                        model: aiInfo.model || '',
+                        tags: aiInfo.tags || '',
+                        notes: aiInfo.notes || '',
+                        dateAdded: new Date().toISOString(),
+                        imageData: imageData,
+                        metadata: pngTextChunks,
+                        serverPath: serverUploadResult.relativePath || null // Store server path reference
+                    };
+
+                    const imageId = await database.images.add(newImage);
+                    resolve({ 
+                        success: true, 
+                        imageId, 
+                        imageData: newImage,
+                        serverUpload: serverUploadResult 
+                    });
+                } catch (error) {
+                    reject(error);
+                }
+            };
+            
+            reader.onerror = () => reject(new Error('Failed to read file'));
+            reader.readAsDataURL(file);
+        });
+    } catch (serverError) {
+        console.error('❌ Server upload failed:', serverError);
+        console.error('Error details:', serverError.message);
+        // Continue with IndexedDB storage even if server upload fails
+        const reader = new FileReader();
+        return new Promise((resolve, reject) => {
+            reader.onload = async (e) => {
+                try {
+                    const imageData = e.target.result;
+                    
+                    const newImage = {
+                        title: aiInfo.title || file.name.replace(/\.[^/.]+$/, ''),
+                        prompt: aiInfo.prompt || '',
+                        model: aiInfo.model || '',
+                        tags: aiInfo.tags || '',
+                        notes: aiInfo.notes || '',
+                        dateAdded: new Date().toISOString(),
+                        imageData: imageData,
+                        metadata: pngTextChunks,
+                        serverPath: null // No server backup available
+                    };
+
+                    const imageId = await database.images.add(newImage);
+                    resolve({ 
+                        success: true, 
+                        imageId, 
+                        imageData: newImage,
+                        serverUpload: { success: false, error: serverError.message }
+                    });
+                } catch (error) {
+                    reject(error);
+                }
+            };
+            
+            reader.onerror = () => reject(new Error('Failed to read file'));
+            reader.readAsDataURL(file);
+        });
+    }
+}
+
+/**
+ * Upload file to server (to save in images/YYYY-MM-DD/ folders)
+ */
+async function uploadFileToServer(file) {
+    console.log('📤 Starting server upload for:', file.name);
+    
+    const formData = new FormData();
+    formData.append('image', file);
+    
+    console.log('📤 Sending POST request to /upload');
+    
+    const response = await fetch('/upload', {
+        method: 'POST',
+        body: formData
     });
+    
+    console.log('📤 Server response status:', response.status, response.statusText);
+    
+    if (!response.ok) {
+        const errorData = await response.json();
+        console.error('📤 Server response error:', errorData);
+        throw new Error(errorData.error || 'Upload failed');
+    }
+    
+    const result = await response.json();
+    console.log('📤 Server upload complete:', result);
+    return result;
 }
 
 /**
@@ -307,17 +391,9 @@ function extractComfyUIInfo(chunks) {
  */
 export function handleFileSelect(fileInput, database, onComplete) {
     const files = Array.from(fileInput.files);
-    const promises = files.map(file => processFile(file, database));
     
-    Promise.all(promises)
-        .then(results => {
-            console.log(`Processed ${results.length} files successfully`);
-            if (onComplete) onComplete(results);
-        })
-        .catch(error => {
-            console.error('Error processing files:', error);
-            alert('Error processing some files: ' + error.message);
-        });
+    // Process files one by one to avoid overwhelming the server
+    processFilesSequentially(files, database, onComplete);
 }
 
 /**
@@ -327,15 +403,43 @@ export function handleFileDrop(event, database, onComplete) {
     event.preventDefault();
     
     const files = Array.from(event.dataTransfer.files).filter(file => file.type.startsWith('image/'));
-    const promises = files.map(file => processFile(file, database));
     
-    Promise.all(promises)
-        .then(results => {
-            console.log(`Processed ${results.length} files via drag & drop`);
-            if (onComplete) onComplete(results);
-        })
-        .catch(error => {
-            console.error('Error processing dropped files:', error);
-            alert('Error processing some files: ' + error.message);
-        });
+    // Process files one by one to avoid overwhelming the server
+    processFilesSequentially(files, database, onComplete);
+}
+
+/**
+ * Process files one by one (sequential) to avoid server overload
+ */
+async function processFilesSequentially(files, database, onComplete) {
+    const results = [];
+    let successCount = 0;
+    let errorCount = 0;
+    
+    for (let i = 0; i < files.length; i++) {
+        try {
+            console.log(`Processing file ${i + 1}/${files.length}: ${files[i].name}`);
+            const result = await processFile(files[i], database);
+            results.push(result);
+            successCount++;
+            
+            if (result.serverUpload && !result.serverUpload.success) {
+                console.warn(`Server backup failed for ${files[i].name}: ${result.serverUpload.error}`);
+            }
+        } catch (error) {
+            console.error(`Error processing ${files[i].name}:`, error);
+            results.push({ success: false, filename: files[i].name, error: error.message });
+            errorCount++;
+        }
+    }
+    
+    console.log(`Completed: ${successCount} successful, ${errorCount} failed`);
+    
+    if (errorCount > 0) {
+        alert(`Processed ${successCount} files successfully. ${errorCount} files had errors.`);
+    } else {
+        console.log(`All ${successCount} files processed successfully!`);
+    }
+    
+    if (onComplete) onComplete(results);
 }
