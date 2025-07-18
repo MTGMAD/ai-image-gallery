@@ -131,7 +131,7 @@ function displayImages(images) {
         // Create the card with the new layout
         card.innerHTML = `
             <img src="${image.imageData}" alt="${image.title || 'Untitled'}" loading="lazy" style="${getThumbnailPositionStyle(image)}">
-            <button class="thumbnail-edit-btn" onclick="openThumbnailEditor(${image.id})" title="Edit thumbnail position">✂️</button>
+            <button class="thumbnail-edit-btn" onclick="openThumbnailEditor(${image.id}, event)" title="Edit thumbnail position">✂️</button>
             <div class="image-info">
                 <div class="image-title">${image.title || 'Untitled'}</div>
                 <div class="image-details">
@@ -982,7 +982,12 @@ function setupThumbnailPositionPicker() {
     });
     
     // Make openThumbnailEditor globally available
-    window.openThumbnailEditor = async (imageId) => {
+    window.openThumbnailEditor = async (imageId, event) => {
+        // Stop the click event from bubbling up to the image card
+        if (event) {
+            event.stopPropagation();
+        }
+        
         thumbnailEditImageId = imageId;
         const image = await db.images.get(imageId);
         
