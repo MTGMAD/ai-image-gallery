@@ -3,13 +3,21 @@ import { processFile, handleFileSelect, handleFileDrop } from './imageProcessor.
 
 // Initialize Dexie database
 const db = new Dexie('AIImageGallery');
-db.version(1).stores({
-    images: '++id, title, prompt, model, tags, notes, dateAdded, imageData, metadata'
+db.version(2).stores({
+    images: '++id, title, prompt, model, tags, notes, dateAdded, imageData, metadata, thumbnailPosition'
+}).upgrade(tx => {
+    // Add thumbnailPosition field to existing records
+    return tx.images.toCollection().modify(image => {
+        if (!image.thumbnailPosition) {
+            image.thumbnailPosition = { x: 50, y: 50 }; // Default center
+        }
+    });
 });
 
 let currentImageId = null;
 let currentImageData = null;
 let allImages = [];
+let thumbnailEditImageId = null;
 
 // Initialize the app
 async function init() {
@@ -81,6 +89,9 @@ function setupEventListeners() {
     
     // Download workflow button
     downloadWorkflow.addEventListener('click', downloadCurrentWorkflow);
+    
+    // Thumbnail position picker events
+    setupThumbnailPositionPicker();
 }
 
 // Load all images from database
@@ -119,7 +130,8 @@ function displayImages(images) {
         
         // Create the card with the new layout
         card.innerHTML = `
-            <img src="${image.imageData}" alt="${image.title || 'Untitled'}" loading="lazy">
+            <img src="${image.imageData}" alt="${image.title || 'Untitled'}" loading="lazy" style="${getThumbnailPositionStyle(image)}">
+            <button class="thumbnail-edit-btn" onclick="openThumbnailEditor(${image.id})" title="Edit thumbnail position">✂️</button>
             <div class="image-info">
                 <div class="image-title">${image.title || 'Untitled'}</div>
                 <div class="image-details">
@@ -794,6 +806,135 @@ async function importAllData(e) {
     
     // Reset file input
     e.target.value = '';
+}
+
+// Get thumbnail position CSS style
+function getThumbnailPositionStyle(image) {
+    if (image.thumbnailPosition) {
+        return `object-position: ${image.thumbnailPosition.x}% ${image.thumbnailPosition.y}%;`;
+    }
+    return 'object-position: center;';
+}
+
+// Setup thumbnail position picker
+function setupThumbnailPositionPicker() {
+    // Create thumbnail position modal HTML
+    const thumbnailModalHtml = `
+        <div id="thumbnailModal" class="modal thumbnail-modal">
+            <div class="modal-content">
+                <span class="close" id="closeThumbnailModal">&times;</span>
+                <h3>📐 Edit Thumbnail Position</h3>
+                <p>Click on the image where you want the thumbnail to be centered:</p>
+                
+                <div class="thumbnail-picker-container">
+                    <img id="thumbnailPickerImage" class="thumbnail-picker-image" src="" alt="">
+                    <div id="positionCrosshair" class="position-crosshair" style="display: none;"></div>
+                </div>
+                
+                <div class="thumbnail-preview">
+                    <strong>Preview:</strong><br>
+                    <img id="thumbnailPreview" src="" alt="Preview" style="object-position: center;">
+                </div>
+                
+                <div class="thumbnail-modal-buttons">
+                    <button class="btn" id="saveThumbnailPosition">Save Position</button>
+                    <button class="btn btn-secondary" id="resetThumbnailPosition">Reset to Center</button>
+                    <button class="btn btn-secondary" id="cancelThumbnailEdit">Cancel</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Add modal to page
+    document.body.insertAdjacentHTML('beforeend', thumbnailModalHtml);
+    
+    // Get elements
+    const thumbnailModal = document.getElementById('thumbnailModal');
+    const closeThumbnailModal = document.getElementById('closeThumbnailModal');
+    const thumbnailPickerImage = document.getElementById('thumbnailPickerImage');
+    const positionCrosshair = document.getElementById('positionCrosshair');
+    const thumbnailPreview = document.getElementById('thumbnailPreview');
+    const saveThumbnailPosition = document.getElementById('saveThumbnailPosition');
+    const resetThumbnailPosition = document.getElementById('resetThumbnailPosition');
+    const cancelThumbnailEdit = document.getElementById('cancelThumbnailEdit');
+    
+    let currentPosition = { x: 50, y: 50 };
+    
+    // Close modal events
+    closeThumbnailModal.addEventListener('click', () => thumbnailModal.style.display = 'none');
+    cancelThumbnailEdit.addEventListener('click', () => thumbnailModal.style.display = 'none');
+    window.addEventListener('click', (e) => {
+        if (e.target === thumbnailModal) thumbnailModal.style.display = 'none';
+    });
+    
+    // Image click to set position
+    thumbnailPickerImage.addEventListener('click', (e) => {
+        const rect = thumbnailPickerImage.getBoundingClientRect();
+        const x = ((e.clientX - rect.left) / rect.width) * 100;
+        const y = ((e.clientY - rect.top) / rect.height) * 100;
+        
+        currentPosition = { x: Math.round(x), y: Math.round(y) };
+        
+        // Update crosshair position
+        positionCrosshair.style.display = 'block';
+        positionCrosshair.style.left = `${x}%`;
+        positionCrosshair.style.top = `${y}%`;
+        
+        // Update preview
+        thumbnailPreview.style.objectPosition = `${currentPosition.x}% ${currentPosition.y}%`;
+    });
+    
+    // Reset to center
+    resetThumbnailPosition.addEventListener('click', () => {
+        currentPosition = { x: 50, y: 50 };
+        positionCrosshair.style.left = '50%';
+        positionCrosshair.style.top = '50%';
+        positionCrosshair.style.display = 'block';
+        thumbnailPreview.style.objectPosition = 'center';
+    });
+    
+    // Save position
+    saveThumbnailPosition.addEventListener('click', async () => {
+        if (thumbnailEditImageId) {
+            await db.images.update(thumbnailEditImageId, {
+                thumbnailPosition: currentPosition
+            });
+            
+            // Refresh gallery to show updated thumbnail
+            await loadImages();
+            updateStats();
+            
+            thumbnailModal.style.display = 'none';
+            console.log(`Thumbnail position updated for image ${thumbnailEditImageId}:`, currentPosition);
+        }
+    });
+    
+    // Make openThumbnailEditor globally available
+    window.openThumbnailEditor = async (imageId) => {
+        thumbnailEditImageId = imageId;
+        const image = await db.images.get(imageId);
+        
+        if (image) {
+            // Set up modal with image
+            thumbnailPickerImage.src = image.imageData;
+            thumbnailPreview.src = image.imageData;
+            
+            // Set current position
+            if (image.thumbnailPosition) {
+                currentPosition = { ...image.thumbnailPosition };
+                thumbnailPreview.style.objectPosition = `${currentPosition.x}% ${currentPosition.y}%`;
+            } else {
+                currentPosition = { x: 50, y: 50 };
+                thumbnailPreview.style.objectPosition = 'center';
+            }
+            
+            // Hide crosshair initially
+            positionCrosshair.style.display = 'none';
+            
+            // Show modal
+            thumbnailModal.style.display = 'block';
+        }
+    };
 }
 
 // Start the app
